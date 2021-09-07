@@ -1,0 +1,91 @@
+---
+title: "KNN on Telecom Churn Data"
+author: "Alexander Vaillant"
+date: "9/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Import Necessary Libraries
+
+```{r}
+library(caret) # GridSearch
+library(fastDummies) #DummyColumns
+library(caTools) #colAUC
+```
+
+## Data Gathering
+### Load Dataset into Dataframe using read.csv()
+
+```{r}
+## Load dataset into dataframe
+url <- "C:/Users/tedda/Desktop/Data Science Portfolio/Machine Learning/Supervised Learning/Classification/KNN on Telecom Churn Data/Raw Datasets/churn_clean.csv"
+churn_data <- read.csv(url, header = TRUE)
+```
+
+## Data Preparation
+
+```{r}
+# Remove customer demographics by indexing
+churn_nodemo <- churn_data[20:50]
+
+# Transform categorical variables into binary dummy variables using fastDummies::dummy_cols()
+churn_dummies <- dummy_cols(churn_nodemo, remove_first_dummy = FALSE, remove_selected_columns = TRUE)
+
+# Normalize the dataset using preProcess()
+preproc <- preProcess(churn_dummies, method = c("center","scale"))
+churn_norm <- predict(preproc,churn_dummies)
+
+dataset_url <- "C:/Users/tedda/Desktop/Data Science Portfolio/Machine Learning/Supervised Learning/Classification/KNN on Telecom Churn Data/Cleansed Datasets/prepped_complete_dataset.csv"
+write.csv(churn_norm, dataset_url, row.names = FALSE)
+
+# Set seed for random sampling of data
+set.seed(123)
+
+# Create the index for the random sampling of data
+sample_size <- round(0.8*nrow(churn_norm))
+train_ind <- sample(1:nrow(churn_norm), size = sample_size)
+
+# Split the data into train and test datasets
+churn_train <- churn_norm[train_ind,]
+churn_train$Churn_Yes <- factor(churn_train$Churn_Yes, levels = c(max(churn_train$Churn_Yes),min(churn_train$Churn_Yes)), labels = c("Yes","No"))
+write.csv(churn_train, "C:/Users/tedda/Desktop/Data Science Portfolio/Machine Learning/Supervised Learning/Classification/KNN on Telecom Churn Data/Cleansed Datasets/train_dataset.csv", row.names = FALSE)
+
+churn_test <- churn_norm[-train_ind,]
+churn_test$Churn_Yes <- factor(churn_test$Churn_Yes, levels = c(max(churn_test$Churn_Yes),min(churn_test$Churn_Yes)), labels = c("Yes","No"))
+write.csv(churn_test, "C:/Users/tedda/Desktop/Data Science Portfolio/Machine Learning/Supervised Learning/Classification/KNN on Telecom Churn Data/Cleansed Datasets/test_dataset.csv", row.names = FALSE)
+```
+
+## Build the Model
+
+```{r}
+# Build the KNN model using train() 
+train_ctrl <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary, verboseIter = TRUE)
+knn_fit <- train(Churn_Yes ~ ., data = churn_train, method = "knn", metric = "ROC", tuneGrid=expand.grid(k = c(1:10)), trControl = train_ctrl)
+
+# Plot the finished model to show ROC at each value of k
+plot(knn_fit)
+```
+
+## Save and Load the Model
+```{r}
+# Save and Load KNN model
+model_url <- "C:/Users/tedda/Desktop/Data Science Portfolio/Machine Learning/Supervised Learning/Classification/KNN on Telecom Churn Data/Exported Models/KNN_model.rds"
+saveRDS(knn_fit, model_url)
+KNN_model <- readRDS(model_url)
+```
+
+## Evaluate the Model
+```{r}
+# Plot and evaluate the AUC of our final model
+pred <- predict(KNN_model, newdata = churn_test, type = "prob")
+colAUC(X = pred, y = churn_test$Churn_Yes, plotROC = TRUE)
+
+# Create a confusion matrix to show the Accuracy and other metrics of our final model
+predconfusion <- predict(KNN_model, newdata = churn_test)
+confusionMatrix(predconfusion, churn_test$Churn_Yes)
+```
+
